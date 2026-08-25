@@ -10,6 +10,7 @@ from .swin_transformer_v2 import SwinTransformerV2
 from .swin_transformer_moe import SwinTransformerMoE
 from .swin_mlp import SwinMLP
 from .simmim import build_simmim
+from .vision_mamba import VisionMamba
 
 
 def build_model(config, is_pretrain=False):
@@ -115,6 +116,21 @@ def build_model(config, is_pretrain=False):
                         ape=config.MODEL.SWIN_MLP.APE,
                         patch_norm=config.MODEL.SWIN_MLP.PATCH_NORM,
                         use_checkpoint=config.TRAIN.USE_CHECKPOINT)
+    elif model_type == 'vim':
+        model = VisionMamba(img_size=config.DATA.IMG_SIZE,
+                            patch_size=config.MODEL.VIM.PATCH_SIZE,
+                            in_chans=config.MODEL.VIM.IN_CHANS,
+                            num_classes=config.MODEL.NUM_CLASSES,
+                            embed_dim=config.MODEL.VIM.EMBED_DIM,
+                            depth=config.MODEL.VIM.DEPTH,
+                            d_state=config.MODEL.VIM.D_STATE,
+                            d_conv=config.MODEL.VIM.D_CONV,
+                            expand=config.MODEL.VIM.EXPAND,
+                            dt_rank=config.MODEL.VIM.DT_RANK,
+                            drop_rate=config.MODEL.DROP_RATE,
+                            drop_path_rate=config.MODEL.DROP_PATH_RATE,
+                            use_middle_cls_token=config.MODEL.VIM.USE_MIDDLE_CLS_TOKEN,
+                            bimamba_type=config.MODEL.VIM.BIMAMBA_TYPE)
     else:
         raise NotImplementedError(f"Unkown model: {model_type}")
 
