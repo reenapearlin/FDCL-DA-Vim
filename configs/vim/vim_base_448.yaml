@@ -1,0 +1,49 @@
+BASE: ['']
+
+DATA:
+  IMG_SIZE: 224
+  BATCH_SIZE: 16
+  EVAL_BATCH_SIZE: 16
+  DATA_PATH: './datasets'
+  DATASET: 'soybean_aging_R3'
+  NUM_WORKERS: 4
+
+MODEL:
+  TYPE: 'vim'
+  NAME: 'vim_base_224'
+  PRETRAINED: './pretrained_models/vim_b_midclstok_81p9acc.pth'
+  NUM_CLASSES: 198
+  DROP_RATE: 0.0
+  DROP_PATH_RATE: 0.1
+
+  VIM:
+    PATCH_SIZE: 16
+    IN_CHANS: 3
+    EMBED_DIM: 768
+    DEPTH: 24
+    D_STATE: 16
+    D_CONV: 4
+    EXPAND: 2
+    DT_RANK: 'auto'
+    USE_MIDDLE_CLS_TOKEN: True
+    BIMAMBA_TYPE: 'v2'
+    RMS_NORM: True
+
+TRAIN:
+  EPOCHS: 200
+  BASE_LR: 0.001
+  WARMUP_LR: 0.000001
+  MIN_LR: 0.00001
+  HEAD_MUL: 5
+  MARGIN: 1.0
+  NUM_PART: 2
+  SWAP: True
+  MASK: True
+  CON: True
+  use_selection: True
+  SWAP_W: 1.0
+  ORIGIN_W: 1.0
+  CON_W: 1.25
+  FD_W: 1.0
+
+TAG: 'vim_age3'

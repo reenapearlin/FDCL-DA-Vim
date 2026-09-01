@@ -219,12 +219,12 @@ _C.TRAIN.CON = False
 _C.TRAIN.use_selection = False
 
 _C.TRAIN.MODEL = 'base'
-_C.TRAIN.SWAP_W = 1
-_C.TRAIN.ORIGIN_W = 1
+_C.TRAIN.SWAP_W = 1.0
+_C.TRAIN.ORIGIN_W = 1.0
 _C.TRAIN.NUM_PART = 2
 _C.TRAIN.MARGIN = 0.4
-_C.TRAIN.CON_W = 0
-_C.TRAIN.FD_W = 0
+_C.TRAIN.CON_W = 0.0
+_C.TRAIN.FD_W = 0.0
 
 # -----------------------------------------------------------------------------
 # Augmentation settings
@@ -270,7 +270,7 @@ _C.TEST.SHUFFLE = False
 _C.ENABLE_AMP = False
 
 # Enable Pytorch automatic mixed precision (amp).
-_C.AMP_ENABLE = True
+_C.AMP_ENABLE = False
 # [Deprecated] Mixed precision opt level of apex, if O0, no apex amp is used ('O0', 'O1', 'O2')
 _C.AMP_OPT_LEVEL = ''
 # Path to output folder, overwritten by command line argument
