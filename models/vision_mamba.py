@@ -12,7 +12,10 @@ try:
 except ImportError:
     rearrange = None
     repeat = None
-
+try:
+    from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
+except ImportError:
+    selective_scan_fn = None
 
 class RMSNorm(nn.Module):
     def __init__(self, d_model: int, eps: float = 1e-5, device=None, dtype=None):
@@ -98,6 +101,59 @@ def selective_scan_ref(
     if D is not None:
         y = y + u * D[None, None, :]
     return y
+
+def selective_scan_cuda_compat(
+    u: torch.Tensor,
+    delta: torch.Tensor,
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    D: Optional[torch.Tensor] = None,
+    delta_bias: Optional[torch.Tensor] = None,
+    delta_softplus: bool = False,
+) -> torch.Tensor:
+    """
+    CUDA-backed selective scan compatible with selective_scan_ref.
+
+    External layout:
+        u, delta : [B, L, D]
+        A        : [D, N]
+        B, C     : [B, L, N]
+        D        : [D]
+
+    mamba_ssm layout:
+        u, delta : [B, D, L]
+        B, C     : [B, N, L]
+    """
+    if selective_scan_fn is None:
+        raise RuntimeError(
+            "mamba_ssm selective_scan_fn is unavailable."
+        )
+
+    # Convert from this project's [B, L, D] layout to
+    # mamba_ssm's [B, D, L] layout.
+    u_ssm = u.transpose(1, 2).contiguous()
+    delta_ssm = delta.transpose(1, 2).contiguous()
+
+    # Convert B/C from [B, L, N] to [B, N, L].
+    B_ssm = B.transpose(1, 2).contiguous()
+    C_ssm = C.transpose(1, 2).contiguous()
+
+    y = selective_scan_fn(
+        u_ssm,
+        delta_ssm,
+        A,
+        B_ssm,
+        C_ssm,
+        D=D,
+        z=None,
+        delta_bias=delta_bias,
+        delta_softplus=delta_softplus,
+        return_last_state=False,
+    )
+
+    # Convert back to [B, L, D].
+    return y.transpose(1, 2).contiguous()
 
 
 class BiMamba(nn.Module):
@@ -231,7 +287,7 @@ class BiMamba(nn.Module):
         dt = self.dt_proj(dt)  # (B, L, d_inner)
 
         A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
-        y_fwd = selective_scan_ref(
+        y_fwd = selective_scan_cuda_compat(
             x_fwd, dt, A, B_proj, C_proj, self.D.float(), delta_softplus=True
         )
 
@@ -248,7 +304,7 @@ class BiMamba(nn.Module):
             dt_b = self.dt_proj_b(dt_b)
 
             A_b = -torch.exp(self.A_b_log.float())
-            y_bwd = selective_scan_ref(
+            y_bwd = selective_scan_cuda_compat(
                 x_bwd, dt_b, A_b, B_proj_b, C_proj_b, self.D_b.float(), delta_softplus=True
             )
             y_bwd = torch.flip(y_bwd, dims=[1])
