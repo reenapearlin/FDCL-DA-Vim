@@ -54,7 +54,7 @@ def main(config):
     model,
         device_ids=[config.LOCAL_RANK],
         broadcast_buffers=False,
-        find_unused_parameters=False
+        find_unused_parameters=True
     )
     
     loss_scaler = NativeScalerWithGradNormCount()
