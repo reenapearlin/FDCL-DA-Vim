@@ -115,19 +115,21 @@ def selective_scan_cuda_compat(
     """
     CUDA-backed selective scan compatible with selective_scan_ref.
 
-    External layout:
-        u, delta : [B, L, D]
-        A        : [D, N]
-        B, C     : [B, L, N]
-        D        : [D]
-
-    mamba_ssm layout:
-        u, delta : [B, D, L]
-        B, C     : [B, N, L]
+    If the optional mamba_ssm extension is unavailable, fall back to the
+    portable reference implementation. This is required for a clean B1 baseline
+    in environments that do not ship the extension, without changing the model
+    architecture or training objective.
     """
     if selective_scan_fn is None:
-        raise RuntimeError(
-            "mamba_ssm selective_scan_fn is unavailable."
+        return selective_scan_ref(
+            u=u,
+            delta=delta,
+            A=A,
+            B=B,
+            C=C,
+            D=D,
+            delta_bias=delta_bias,
+            delta_softplus=delta_softplus,
         )
 
     # Convert from this project's [B, L, D] layout to

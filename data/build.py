@@ -184,7 +184,8 @@ class MyTransform:
         self.mask_img = T.Compose([
             self.common_aug,
             self.to_tensor,
-            T.RandomErasing(p=1, scale=(0.15, 0.45), ratio=(0.3, 3.3)),
+            # Use milder random erasing to avoid destroying small dataset samples
+            T.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3)),
         ])
 
         self.swap_img = T.Compose([
@@ -222,7 +223,8 @@ class MyTransform:
             imgs.append(self.mask_img(image))
             imgs.append(self.swap_img(image))
         # mask, mask_unrepeat = self.mask_generator()
-        return imgs
+        # Return tuple so collate_fn recognizes multi-view inputs deterministically
+        return tuple(imgs)
 
 def collate_fn(batch):
     if not isinstance(batch[0][0], tuple):
@@ -239,8 +241,23 @@ def collate_fn(batch):
         return ret
 
 
-def build_loader(config, logger, is_train=True):
-    if is_train:
+def build_loader(config, logger=None, is_train=True):
+    # Normalize is_train which may be boolean or one of {'train','val','test'}
+    mode = is_train
+    if isinstance(is_train, str):
+        mode_lower = is_train.lower()
+        # treat any mode starting with 'train' as training
+        if mode_lower.startswith('train'):
+            is_training = True
+        # treat modes containing 'val' or equal to 'test' as evaluation
+        elif 'val' in mode_lower or mode_lower == 'test':
+            is_training = False
+        else:
+            is_training = bool(is_train)
+    else:
+        is_training = bool(is_train)
+
+    if is_training:
         transform = MyTransform(config)
     else:
         size = int((256 / 224) * config.DATA.IMG_SIZE)
@@ -252,7 +269,8 @@ def build_loader(config, logger, is_train=True):
             T.Normalize(mean=torch.tensor(IMAGENET_DEFAULT_MEAN), std=torch.tensor(IMAGENET_DEFAULT_STD))])
 
     batch_size = config.DATA.BATCH_SIZE
-    logger.info(f'Pre-train data transform:\n{transform}')
+    if logger is not None:
+        logger.info(f'Pre-train data transform:\n{transform}')
 
     data_root = os.path.join(config.DATA.DATA_PATH, config.DATA.DATASET)
     if config.DATA.DATASET == 'imagenet':
@@ -327,11 +345,12 @@ def build_loader(config, logger, is_train=True):
     else:
         raise NotImplementedError("Not in supported dataset list.")
 
-    logger.info(f'Build dataset: train images = {len(dataset)}')
+    if logger is not None:
+        logger.info(f'Build dataset: train images = {len(dataset)}')
 
-    sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=is_train)
+    sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=is_training)
     dataloader = DataLoader(dataset, batch_size, sampler=sampler, num_workers=config.DATA.NUM_WORKERS,
-                            pin_memory=True, drop_last=is_train, collate_fn=collate_fn)
+                            pin_memory=True, drop_last=is_training, collate_fn=collate_fn)
 
     return dataloader, num_classes
 

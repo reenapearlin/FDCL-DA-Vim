@@ -24,7 +24,11 @@ class ImageDataset():
         self.root = root
         self.is_train = is_train
         self.transform = transform
-        self.mode = 'train' if is_train else 'test'
+        # Accept explicit mode strings 'train'|'val'|'test' as well as bools
+        if isinstance(is_train, str):
+            self.mode = is_train
+        else:
+            self.mode = 'train' if is_train else 'test'
 
         self.data_infos = []
         folders = os.listdir(os.path.join(root, self.mode))
@@ -61,7 +65,11 @@ class Cultivar():
         self.root = root
         self.is_train = is_train
         self.transform = transform
-        self.mode = 'train' if is_train else 'test'
+        # Accept explicit mode strings 'train'|'val'|'test' as well as bools
+        if isinstance(is_train, str):
+            self.mode = is_train
+        else:
+            self.mode = 'train' if is_train else 'test'
         anno_txt_file = open(os.path.join(self.root, 'anno', self.mode + '.txt'))
         self.labels = []
         self.imgs_name = []
@@ -91,7 +99,11 @@ class leaf_hair():
         self.root = root
         self.is_train = is_train
         self.transform = transform
-        self.mode = 'train' if is_train else 'test'
+        # Accept explicit mode strings 'train'|'val'|'test' as well as bools
+        if isinstance(is_train, str):
+            self.mode = is_train
+        else:
+            self.mode = 'train' if is_train else 'test'
         self.anno = open(os.path.join(self.root, 'anno.json'))[self.mode]
         labels = list(set([sample['label'] for sample in self.anno]))
         self.label_remap = {labels[i]: i for i in range(len(labels))}
@@ -1012,7 +1024,11 @@ class soybean_aging_R3():
         self.root = root
         self.is_train = is_train
         self.transform = transform
-        self.mode = 'train' if is_train else 'test'
+        # Support boolean or explicit mode strings (e.g. 'train', 'test', 'train_split', 'val_from_train')
+        if isinstance(is_train, str):
+            self.mode = is_train
+        else:
+            self.mode = 'train' if is_train else 'test'
         anno_txt_file = open(os.path.join(self.root, 'anno', self.mode + '.txt'))
         self.labels = []
         self.imgs_name = []

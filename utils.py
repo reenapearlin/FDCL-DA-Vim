@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.distributed as dist
-from torch._six import inf
+from math import inf
 import argparse
 from config import get_config
 import torch.nn.functional as F
@@ -139,7 +139,7 @@ def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger)
 
 def load_pretrained(config, model, logger):
     logger.info(f"==============> Loading weight {config.MODEL.PRETRAINED} for fine-tuning......")
-    checkpoint = torch.load(config.MODEL.PRETRAINED, map_location='cpu')
+    checkpoint = torch.load(config.MODEL.PRETRAINED, map_location='cpu', weights_only=False)
     state_dict = checkpoint['model']
 
     # delete relative_position_index since we always re-init it
@@ -184,7 +184,7 @@ def load_pretrained(config, model, logger):
         absolute_pos_embed_current = model.state_dict()[k]
         _, L1, C1 = absolute_pos_embed_pretrained.size()
         _, L2, C2 = absolute_pos_embed_current.size()
-        if C1 != C1:
+        if C1 != C2:
             logger.warning(f"Error in loading {k}, passing......")
         else:
             if L1 != L2:
@@ -197,6 +197,63 @@ def load_pretrained(config, model, logger):
                 absolute_pos_embed_pretrained_resized = absolute_pos_embed_pretrained_resized.permute(0, 2, 3, 1)
                 absolute_pos_embed_pretrained_resized = absolute_pos_embed_pretrained_resized.flatten(1, 2)
                 state_dict[k] = absolute_pos_embed_pretrained_resized
+        # interpolate ViM positional embedding when changing image resolution
+    if 'pos_embed' in state_dict and 'pos_embed' in model.state_dict():
+        pos_embed_pretrained = state_dict['pos_embed']
+        pos_embed_current = model.state_dict()['pos_embed']
+
+        if pos_embed_pretrained.shape != pos_embed_current.shape:
+            logger.info(
+                f"Interpolating pos_embed: "
+                f"{tuple(pos_embed_pretrained.shape)} -> "
+                f"{tuple(pos_embed_current.shape)}"
+            )
+
+            # ViM uses 1 CLS token + spatial patch tokens
+            cls_pos = pos_embed_pretrained[:, :1, :]
+            patch_pos = pos_embed_pretrained[:, 1:, :]
+
+            old_num_patches = patch_pos.shape[1]
+            new_num_patches = pos_embed_current.shape[1] - 1
+
+            old_size = int(old_num_patches ** 0.5)
+            new_size = int(new_num_patches ** 0.5)
+
+            if old_size * old_size != old_num_patches:
+                raise ValueError(
+                    f"Checkpoint patch tokens ({old_num_patches}) "
+                    f"do not form a square grid."
+                )
+
+            if new_size * new_size != new_num_patches:
+                raise ValueError(
+                    f"Current model patch tokens ({new_num_patches}) "
+                    f"do not form a square grid."
+                )
+
+            dim = patch_pos.shape[-1]
+
+            patch_pos = patch_pos.reshape(
+                1, old_size, old_size, dim
+            ).permute(0, 3, 1, 2)
+
+            patch_pos = torch.nn.functional.interpolate(
+                patch_pos,
+                size=(new_size, new_size),
+                mode='bicubic',
+                align_corners=False
+            )
+
+            patch_pos = patch_pos.permute(
+                0, 2, 3, 1
+            ).reshape(
+                1, new_size * new_size, dim
+            )
+
+            state_dict['pos_embed'] = torch.cat(
+                [cls_pos, patch_pos],
+                dim=1
+            )
 
     # check classifier, if not match, then re-init classifier to zero
     head_bias_pretrained = state_dict['head.bias']

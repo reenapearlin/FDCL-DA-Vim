@@ -1,7 +1,7 @@
 BASE: ['']
 
 DATA:
-  IMG_SIZE: 224
+  IMG_SIZE: 448
   BATCH_SIZE: 16
   EVAL_BATCH_SIZE: 16
   DATA_PATH: './datasets'
@@ -10,8 +10,8 @@ DATA:
 
 MODEL:
   TYPE: 'vim'
-  NAME: 'vim_base_224'
-  PRETRAINED: './pretrained_models/vim_b_midclstok_81p9acc.pth'
+  NAME: 'vim_base_448'
+  PRETRAINED: '../vim_checkpoints/vim_b_midclstok_81p9acc.pth'
   NUM_CLASSES: 198
   DROP_RATE: 0.0
   DROP_PATH_RATE: 0.1
@@ -37,13 +37,13 @@ TRAIN:
   HEAD_MUL: 5
   MARGIN: 1.0
   NUM_PART: 2
-  SWAP: True
+  SWAP: False
   MASK: True
-  CON: True
-  use_selection: True
-  SWAP_W: 1.0
+  CON: False
+  use_selection: False
+  SWAP_W: 0.0
   ORIGIN_W: 1.0
-  CON_W: 1.25
-  FD_W: 1.0
+  CON_W: 0.0
+  FD_W: 0.0
 
 TAG: 'vim_age3'

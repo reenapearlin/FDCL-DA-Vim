@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Local datasets
+datasets/
+
+# Training outputs
+output/
+
+# Local pretrained/checkpoint files
+pretrained_models/
+*.pth
+*.pt
+
+# Local backups
+*.backup
+
+# Logs
+*.log
+
+# Environment / IDE
+.venv/
+venv/
+.env
+.vscode/
+.idea/
