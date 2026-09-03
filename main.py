@@ -30,9 +30,10 @@ def main(config):
     # 5-fold cross-validation
     config.defrost()
     data_loader_train, config.MODEL.NUM_CLASSES = build_loader(config, logger=logger, is_pretrain=False,
-                                                               is_train=True)
+                                                               is_train='train_split')
     config.freeze()
-    data_loader_val, _ = build_loader(config, logger=logger, is_pretrain=False, is_train=False)
+    # Use validation split from training data (do not use provided val.txt/test.txt)
+    data_loader_val, _ = build_loader(config, logger=logger, is_pretrain=False, is_train='val_from_train')
     mixup_fn = None
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
@@ -49,8 +50,13 @@ def main(config):
     model_without_ddp = model
 
     optimizer = build_optimizer(config, model)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK],
-                                                      broadcast_buffers=False)
+    model = torch.nn.parallel.DistributedDataParallel(
+    model,
+        device_ids=[config.LOCAL_RANK],
+        broadcast_buffers=False,
+        find_unused_parameters=False
+    )
+    
     loss_scaler = NativeScalerWithGradNormCount()
 
     if config.TRAIN.ACCUMULATION_STEPS > 1:
@@ -88,7 +94,16 @@ def main(config):
             return
 
     if config.MODEL.PRETRAINED and (not config.MODEL.RESUME):
-        load_pretrained(config, model_without_ddp, logger)
+        if config.MODEL.TYPE == 'vim':
+            load_report = model_without_ddp.load_official_vim_base_checkpoint(config.MODEL.PRETRAINED)
+            logger.info(
+                "Official Vim preload: loaded=%d missing=%s discarded_head=%s",
+                load_report['loaded_parameter_keys'],
+                load_report['missing_keys'],
+                load_report['discarded_checkpoint_head_keys'],
+            )
+        else:
+            load_pretrained(config, model_without_ddp, logger)
         acc1, acc5, loss = validate(config, data_loader_val, model)
         logger.info(f"Accuracy of the network on the test images: {acc1:.2f}%")
 
@@ -144,26 +159,23 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
     end = time.time()
     for idx, batch in enumerate(data_loader):
         imgs, label = batch[0], batch[-1].cuda(non_blocking=True)
-        imgs = [img.cuda(non_blocking=True) for img in imgs]
-
-        # if mixup_fn is not None:
-        #     samples, targets = mixup_fn(samples, targets)
-        if config.TRAIN.SWAP:
-            imgs = torch.cat(imgs, dim=0)
-            label = torch.cat([label, label], dim=-1)
-        else:
+        if isinstance(imgs, (list, tuple)):
+            imgs = [img.cuda(non_blocking=True) for img in imgs]
+            assert len(imgs) == 1, f"Expected a single-view B1 batch, got {len(imgs)} views."
             imgs = imgs[0]
+        else:
+            imgs = imgs.cuda(non_blocking=True)
+
+        assert imgs.shape[0] == label.shape[0], "Batch size mismatch between images and labels"
+
         with torch.cuda.amp.autocast(enabled=config.AMP_ENABLE):
             outputs, feats, logits_dict = model(imgs)
         B = outputs.shape[0]
-        loss_cls = criterion(outputs[:B // scale], label[:B // scale])
+        loss_cls = criterion(outputs, label)
         loss = config.TRAIN.ORIGIN_W * loss_cls
-        if config.TRAIN.SWAP:
-            loss_swap = criterion(outputs[B // scale:], label[B // scale:])
-            loss = loss + config.TRAIN.SWAP_W * loss_swap
 
         if config.TRAIN.CON:
-            loss_con = con_loss(feats[:B // scale], label[:B // scale])
+            loss_con = con_loss(feats, label)
             loss = loss + config.TRAIN.CON_W * loss_con
 
         if config.TRAIN.use_selection:
@@ -175,7 +187,7 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
                     n_preds = nn.Hardtanh()(logit)
                     labels_0 = torch.zeros([B * S, config.MODEL.NUM_CLASSES]) - 1
                     labels_0 = labels_0.cuda(non_blocking=True)
-                    loss_fd_ = nn.MSELoss()(n_preds[:B // scale], labels_0[:B // scale])
+                    loss_fd_ = nn.MSELoss()(n_preds, labels_0[:B * S])
                     loss += config.TRAIN.FD_W * loss_fd_
                     loss_fd += loss_fd_
 
@@ -323,15 +335,14 @@ if __name__ == '__main__':
     cudnn.benchmark = True
 
     if args.optim != 'sgd':
-        # linear scale the learning rate according to total batch size, may not be optimal
-        linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-        linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-        linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-        # gradient accumulation also need to scale the learning rate
-        if config.TRAIN.ACCUMULATION_STEPS > 1:
-            linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS
-            linear_scaled_warmup_lr = linear_scaled_warmup_lr * config.TRAIN.ACCUMULATION_STEPS
-            linear_scaled_min_lr = linear_scaled_min_lr * config.TRAIN.ACCUMULATION_STEPS
+        # Keep the configured learning rate for small-batch training.
+        # IMPORTANT: do NOT scale the learning rate by gradient accumulation steps.
+        # Gradient accumulation will be handled by accumulating gradients only;
+        # the BASE_LR, WARMUP_LR and MIN_LR remain exactly as configured.
+        linear_scaled_lr = config.TRAIN.BASE_LR
+        linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR
+        linear_scaled_min_lr = config.TRAIN.MIN_LR
+
         config.defrost()
         config.TRAIN.BASE_LR = linear_scaled_lr
         config.TRAIN.WARMUP_LR = linear_scaled_warmup_lr
