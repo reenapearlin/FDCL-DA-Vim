@@ -387,6 +387,7 @@ class VisionMamba(nn.Module):
         drop_path_rate: float = 0.1,
         use_middle_cls_token: bool = True,
         bimamba_type: str = "v2",
+        use_selection: bool = False,
         norm_layer=RMSNorm,
         **kwargs,
     ):
@@ -395,6 +396,7 @@ class VisionMamba(nn.Module):
         self.num_features = self.embed_dim = embed_dim
         self.depth = depth
         self.use_middle_cls_token = use_middle_cls_token
+        self.use_selection = use_selection
 
         # Patch Embedding
         self.patch_embed = PatchEmbed(
@@ -439,7 +441,6 @@ class VisionMamba(nn.Module):
         self.tapped_layers = [6, 12, 18, 24]
 
         # Foreground-Background Feature Distillation (WeaklySelector)
-        self.use_selection = True
         self.num_selects = {
             'layer1': 256,
             'layer2': 128,
@@ -452,7 +453,7 @@ class VisionMamba(nn.Module):
             'layer3': embed_dim,
             'layer4': embed_dim,
         }
-        self.selector = WeaklySelector(feat_dims, num_classes, self.num_selects)
+        self.selector = WeaklySelector(feat_dims, num_classes, self.num_selects) if self.use_selection else None
 
         # Initialize weights
         trunc_normal_(self.cls_token, std=0.02)
@@ -542,7 +543,7 @@ class VisionMamba(nn.Module):
         feats, feat_dict = self.forward_features(x)
         outputs = self.head(feats)
         logits_dict = {}
-        if self.use_selection:
+        if self.use_selection and self.selector is not None:
             logits_dict = self.selector(feat_dict)
         return outputs, feats, logits_dict
 

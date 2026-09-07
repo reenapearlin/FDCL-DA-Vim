@@ -130,7 +130,8 @@ def build_model(config, is_pretrain=False):
                             drop_rate=config.MODEL.DROP_RATE,
                             drop_path_rate=config.MODEL.DROP_PATH_RATE,
                             use_middle_cls_token=config.MODEL.VIM.USE_MIDDLE_CLS_TOKEN,
-                            bimamba_type=config.MODEL.VIM.BIMAMBA_TYPE)
+                            bimamba_type=config.MODEL.VIM.BIMAMBA_TYPE,
+                            use_selection=config.TRAIN.use_selection)
     else:
         raise NotImplementedError(f"Unkown model: {model_type}")
 
