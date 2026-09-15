@@ -1,0 +1,15 @@
+*.pth
+*.pt
+*.bin
+*.tar.gz
+*.corrupted_nan
+checkpoints/
+data/
+SoyAgeing-R1/
+images/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.egg-info/
+!*.log
+!heatmaps_baseline/
